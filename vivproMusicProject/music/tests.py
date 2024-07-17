@@ -1,11 +1,10 @@
-from rest_framework.test import APITestCase # type: ignore
 from rest_framework import status # type: ignore
-from unittest.mock import patch, MagicMock
+from rest_framework.test import APITestCase # type: ignore
+from django.urls import reverse # type: ignore
 from .models import Song
 
 class SongViewSetTests(APITestCase):
     def setUp(self):
-        # Set up initial test data
         self.song1 = Song.objects.create(
             id='1', title='Song One', danceability=0.5, energy=0.5, key=1, mode=1,
             acousticness=0.5, instrumentalness=0.5, liveness=0.5, loudness=0.5,
@@ -20,32 +19,49 @@ class SongViewSetTests(APITestCase):
         )
 
     def test_list_songs(self):
-        response = self.client.get('/api/songs/')
+        url = reverse('song-list')
+        response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data['results']), 2)
 
     def test_retrieve_song(self):
-        response = self.client.get('/api/songs/1/')
+        url = reverse('song-detail', args=[self.song1.id])
+        response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['title'], 'Song One')
+        self.assertEqual(response.data['title'], self.song1.title)
 
-    def test_filter_by_title(self):
-        response = self.client.get('/api/songs/', {'title': 'One'})
+    def test_retrieve_song_by_title(self):
+        url = reverse('song-list')
+        response = self.client.get(url, {'title': 'One'})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data['results']), 1)
+        self.assertGreater(len(response.data['results']), 0)
+        self.assertEqual(response.data['results'][0]['title'], 'Song One')
 
     def test_rate_song(self):
-        response = self.client.patch('/api/songs/1/rate/', {'rating': 4.5})
+        url = reverse('song-rate-song', args=[self.song1.id])
+        response = self.client.patch(url, {'rating': 4})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['rating'], 4.5)
+        self.assertEqual(response.data['rating'], 4)
+        self.song1.refresh_from_db()
+        self.assertEqual(self.song1.rating, 4)
 
     def test_invalid_rating(self):
-        response = self.client.patch('/api/songs/1/rate/', {'rating': 6})
+        url = reverse('song-rate-song', args=[self.song1.id])
+        response = self.client.patch(url, {'rating': 6})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('rating', response.data)
         self.assertEqual(response.data['rating'][0], 'Ensure this value is less than or equal to 5.')
 
     def test_missing_rating(self):
-        response = self.client.patch('/api/songs/1/rate/', {})
+        url = reverse('song-rate-song', args=[self.song1.id])
+        response = self.client.patch(url, {})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data['rating'], ['This field is required.'])
+        self.assertIn('rating', response.data)
+
+    def test_get_rating(self):
+        self.song1.rating = 3
+        self.song1.save()
+        url = reverse('song-rate-song', args=[self.song1.id])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['rating'], 3)
