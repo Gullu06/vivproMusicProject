@@ -60,6 +60,10 @@ e.g. :
   Method: GET
 
 - Rate a Song
+  URL: /api/ratings/
+  Method: POST
+
+- Rate a Song
   URL: /api/songs/{id}/rate/
   Method: PATCH
 

@@ -1,9 +1,11 @@
 from rest_framework import viewsets, status # type: ignore
 from rest_framework.decorators import action # type: ignore
 from rest_framework.response import Response # type: ignore
-from .models import Song
-from .serializers import SongSerializer, SongRatingSerializer
+from .models import Rating, Song
+from .serializers import SongRatingSerializer, SongSerializer, RatingSerializer
 from music.service import SongService
+from music import models
+from django.contrib.auth.models import User # type: ignore
 
 class SongViewSet(viewsets.ModelViewSet):
     queryset = Song.objects.all()
@@ -57,3 +59,14 @@ class SongViewSet(viewsets.ModelViewSet):
                 return Response({'status': 'rating set', 'rating': rating}, status=status.HTTP_200_OK)
             return Response({"error": "Rating must be between 0 and 5."}, status=status.HTTP_400_BAD_REQUEST)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class RatingViewSet(viewsets.ModelViewSet):
+    queryset = Rating.objects.all()
+    serializer_class = RatingSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        rating = serializer.save()
+        return Response(RatingSerializer(rating).data, status=status.HTTP_201_CREATED)
