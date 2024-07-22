@@ -6,6 +6,7 @@ from .serializers import SongRatingSerializer, SongSerializer, RatingSerializer
 from music.service import SongService
 from music import models
 from django.contrib.auth.models import User # type: ignore
+from rest_framework.permissions import IsAuthenticated # type: ignore
 
 class SongViewSet(viewsets.ModelViewSet):
     queryset = Song.objects.all()
@@ -26,22 +27,16 @@ class SongViewSet(viewsets.ModelViewSet):
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
+            if not serializer.data:
+                return Response({'detail': 'No data available.'}, status=status.HTTP_404_NOT_FOUND)
             return self.get_paginated_response(serializer.data)
 
         serializer = self.get_serializer(queryset, many=True)
+
         if not serializer.data:
             return Response({'detail': 'No data available.'}, status=status.HTTP_404_NOT_FOUND)
-        return Response(serializer.data, status=status.HTTP_200_OK)
 
-    def retrieve(self, request, *args, **kwargs):
-        title = self.request.query_params.get('title', None)
-        if title:
-            songs = Song.objects.filter(title__icontains=title)
-            serializer = self.get_serializer(songs, many=True)
-            if not serializer.data:
-                return Response({'detail': 'Song not found.'}, status=status.HTTP_404_NOT_FOUND)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return super().retrieve(request, *args, **kwargs)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get', 'patch'], url_path='rate')
     def rate_song(self, request, pk=None):
@@ -63,10 +58,22 @@ class SongViewSet(viewsets.ModelViewSet):
 class RatingViewSet(viewsets.ModelViewSet):
     queryset = Rating.objects.all()
     serializer_class = RatingSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        user = serializer.validated_data.get('user', self.request.user)
+        if not self.request.user.is_superuser:
+            user = self.request.user
+        serializer.save(user=user)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
-        rating = serializer.save()
-        return Response(RatingSerializer(rating).data, status=status.HTTP_201_CREATED)
+        if serializer.is_valid():
+            rating = serializer.validated_data.get('rating')
+            if 0 > rating > 5:
+                return Response({"error": "Rating must be between 0 and 5."}, status=status.HTTP_400_BAD_REQUEST)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        return Response({"rating": "You can only rate a song once."}, status=status.HTTP_400_BAD_REQUEST)
